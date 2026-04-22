@@ -12,6 +12,9 @@ logs/
 # MediaPipe
 .mediapipe/
 
+# Model files (downloaded at runtime)
+models/*.task
+
 # IDEs
 .vscode/
 .idea/

@@ -1,14 +1,14 @@
 """
 Libras & Microexpressions Recognition System — Main Entry Point.
 
-Integrates threaded webcam capture, MediaPipe Holistic landmark extraction,
-dual temporal buffers, placeholder classifiers, and a real-time HUD overlay.
+Uses the new MediaPipe Tasks API (HolisticLandmarker) for landmark detection.
+Integrates threaded webcam capture, dual temporal buffers, placeholder
+classifiers, and a real-time HUD overlay.
 
 Press 'q' to quit.
 """
 
 import cv2
-import mediapipe as mp
 import numpy as np
 import logging
 import time
@@ -32,52 +32,73 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
+
 # ---------------------------------------------------------------------------
-# Drawing helpers
+# Drawing helpers (pure OpenCV — no dependency on mp.solutions)
 # ---------------------------------------------------------------------------
-MP_DRAWING = mp.solutions.drawing_utils
-MP_HOLISTIC = mp.solutions.holistic
-MP_DRAW_SPEC = MP_DRAWING.DrawingSpec
 
-# Custom styles for skeleton overlay
-FACE_SPEC = MP_DRAW_SPEC(color=(80, 110, 10), thickness=1, circle_radius=1)
-HAND_SPEC = MP_DRAW_SPEC(color=(80, 22, 10), thickness=2, circle_radius=2)
-POSE_SPEC = MP_DRAW_SPEC(color=(245, 117, 66), thickness=2, circle_radius=2)
+# MediaPipe Holistic connection definitions for skeleton rendering
+POSE_CONNECTIONS = [
+    (0,1),(1,2),(2,3),(3,7),(0,4),(4,5),(5,6),(6,8),
+    (9,10),(11,12),(11,13),(13,15),(15,17),(15,19),(15,21),
+    (17,19),(12,14),(14,16),(16,18),(16,20),(16,22),(18,20),
+    (11,23),(12,24),(23,24),(23,25),(24,26),(25,27),(26,28),
+    (27,29),(28,30),(29,31),(30,32),(27,31),(28,32),
+]
+
+HAND_CONNECTIONS = [
+    (0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),
+    (5,9),(9,10),(10,11),(11,12),(9,13),(13,14),(14,15),(15,16),
+    (13,17),(17,18),(18,19),(19,20),(0,17),
+]
 
 
-def draw_landmarks(frame, results):
-    """Draw MediaPipe skeletons on the BGR frame."""
-    # Face mesh
-    if results.face_landmarks:
-        MP_DRAWING.draw_landmarks(
-            frame, results.face_landmarks, MP_HOLISTIC.FACEMESH_CONTOURS,
-            landmark_drawing_spec=FACE_SPEC, connection_drawing_spec=FACE_SPEC,
-        )
-    # Pose
-    if results.pose_landmarks:
-        MP_DRAWING.draw_landmarks(
-            frame, results.pose_landmarks, MP_HOLISTIC.POSE_CONNECTIONS,
-            landmark_drawing_spec=POSE_SPEC, connection_drawing_spec=POSE_SPEC,
-        )
+def _draw_landmarks_cv2(frame, landmarks, connections, color, thickness=2, radius=3):
+    """Draw a set of landmarks and their connections on the frame using OpenCV."""
+    if not landmarks:
+        return
+    h, w, _ = frame.shape
+    points = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks]
+    for a, b in connections:
+        if a < len(points) and b < len(points):
+            cv2.line(frame, points[a], points[b], color, thickness)
+    for pt in points:
+        cv2.circle(frame, pt, radius, color, -1)
+
+
+def draw_landmarks(frame, result):
+    """Draw all detected landmarks on the BGR frame."""
+    if result is None:
+        return
+
+    # Face mesh — thin teal dots
+    if result.face_landmarks:
+        h, w, _ = frame.shape
+        for lm in result.face_landmarks:
+            cx, cy = int(lm.x * w), int(lm.y * h)
+            cv2.circle(frame, (cx, cy), 1, (80, 110, 10), -1)
+
+    # Pose skeleton
+    if result.pose_landmarks:
+        _draw_landmarks_cv2(frame, result.pose_landmarks, POSE_CONNECTIONS,
+                            color=(245, 117, 66), thickness=2, radius=3)
+
     # Left hand
-    if results.left_hand_landmarks:
-        MP_DRAWING.draw_landmarks(
-            frame, results.left_hand_landmarks, MP_HOLISTIC.HAND_CONNECTIONS,
-            landmark_drawing_spec=HAND_SPEC, connection_drawing_spec=HAND_SPEC,
-        )
+    if result.left_hand_landmarks:
+        _draw_landmarks_cv2(frame, result.left_hand_landmarks, HAND_CONNECTIONS,
+                            color=(121, 22, 76), thickness=2, radius=2)
+
     # Right hand
-    if results.right_hand_landmarks:
-        MP_DRAWING.draw_landmarks(
-            frame, results.right_hand_landmarks, MP_HOLISTIC.HAND_CONNECTIONS,
-            landmark_drawing_spec=HAND_SPEC, connection_drawing_spec=HAND_SPEC,
-        )
+    if result.right_hand_landmarks:
+        _draw_landmarks_cv2(frame, result.right_hand_landmarks, HAND_CONNECTIONS,
+                            color=(121, 44, 250), thickness=2, radius=2)
 
 
 def draw_hud(frame, predictions: dict, fps: float):
     """Render a heads-up display with predictions and FPS."""
     h, w, _ = frame.shape
 
-    # --- Semi-transparent bar at the top ---
+    # Semi-transparent bar at the top
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (w, 90), (30, 30, 30), -1)
     cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
@@ -116,7 +137,7 @@ def draw_hud(frame, predictions: dict, fps: float):
 def main():
     """Application entry point."""
     logger.info("=" * 60)
-    logger.info("  Libras & Microexpressions System  –  Starting")
+    logger.info("  Libras & Microexpressions System  —  Starting")
     logger.info("=" * 60)
 
     vs = None
@@ -125,11 +146,14 @@ def main():
     try:
         # 1. Camera
         vs = VideoStream(src=0).start()
-        time.sleep(1.0)   # warm-up
+        time.sleep(1.0)  # warm-up
         logger.info("Camera stream started.")
 
-        # 2. Inference engine (MediaPipe + classifiers)
-        engine = InferenceEngine(window_size=30)
+        # 2. Inference engine (MediaPipe Tasks + classifiers)
+        engine = InferenceEngine(
+            model_path="models/holistic_landmarker.task",
+            window_size=30,
+        )
 
         prev_time = time.time()
         fps = 0.0
@@ -144,16 +168,16 @@ def main():
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # 3. MediaPipe processing
-            results = engine.process_frame(rgb)
+            result = engine.process_frame(rgb)
 
             # 4. Draw skeletons
-            draw_landmarks(frame, results)
+            draw_landmarks(frame, result)
 
             # 5. Feed buffers + run classifiers
-            engine.feed(results)
+            engine.feed(result)
             predictions = engine.infer()
 
-            # 6. FPS calculation
+            # 6. FPS calculation (exponential moving average)
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev_time, 1e-6))
             prev_time = now
@@ -161,7 +185,7 @@ def main():
             # 7. HUD overlay
             draw_hud(frame, predictions, fps)
 
-            # 8. Show
+            # 8. Display
             cv2.imshow("Libras & Microexpressions AI", frame)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
