@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Logs
+logs/
+*.log
+
+# MediaPipe
+.mediapipe/
+
+# IDEs
+.vscode/
+.idea/
