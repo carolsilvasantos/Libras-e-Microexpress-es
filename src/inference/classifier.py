@@ -116,3 +116,56 @@ class EmotionClassifier(_BasePlaceholderModel):
             input_features=input_features or self.DEFAULT_FEATURES,
             window_size=window_size,
         )
+
+
+class LibrasAlphabetClassifier:
+    """Actual classifier for Libras Alphabet using a trained Scikit-Learn model."""
+    
+    DEFAULT_FEATURES = 225
+
+    def __init__(self, model_path: str = "models/alphabet_classifier.pkl", window_size: int = 30):
+        self.model_path = model_path
+        self.window_size = window_size
+        self.model = None
+        self.labels = []
+        self.is_loaded = False
+        
+        self.load_model()
+
+    def load_model(self):
+        import os
+        import pickle
+        if os.path.exists(self.model_path):
+            try:
+                with open(self.model_path, "rb") as f:
+                    data = pickle.load(f)
+                    self.model = data["model"]
+                    self.labels = data["labels"]
+                    self.is_loaded = True
+                logger.info(f"Loaded LibrasAlphabetClassifier from {self.model_path}")
+            except Exception as e:
+                logger.error(f"Failed to load alphabet classifier: {e}")
+        else:
+            logger.warning(f"Alphabet classifier model not found at {self.model_path}. Collection needed.")
+
+    def predict(self, sequence: np.ndarray) -> dict:
+        if not self.is_loaded:
+            return {"label": "N/A", "confidence": 0.0, "probabilities": {}}
+            
+        # For static alphabet signs, we can use the mean of the temporal window
+        # or just the latest frame. We'll use the latest frame to be more responsive.
+        latest_frame = sequence[0, -1].reshape(1, -1)
+        
+        try:
+            probs = self.model.predict_proba(latest_frame)[0]
+            label = self.model.predict(latest_frame)[0]
+            confidence = float(np.max(probs))
+            
+            return {
+                "label": str(label),
+                "confidence": confidence,
+                "probabilities": {str(l): float(p) for l, p in zip(self.model.classes_, probs)}
+            }
+        except Exception as e:
+            logger.error(f"Prediction error in AlphabetClassifier: {e}")
+            return {"label": "Error", "confidence": 0.0, "probabilities": {}}

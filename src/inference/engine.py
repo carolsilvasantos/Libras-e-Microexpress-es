@@ -17,7 +17,7 @@ from mediapipe.tasks.python.core.base_options import BaseOptions
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 from mediapipe import Image, ImageFormat
 
-from src.inference.classifier import LibrasClassifier, EmotionClassifier
+from src.inference.classifier import LibrasClassifier, EmotionClassifier, LibrasAlphabetClassifier
 from src.utils.feature_extractor import FeatureExtractor
 from src.utils.filters import MovingAverageFilter
 
@@ -55,10 +55,12 @@ class InferenceEngine:
         self._libras_num_features = (33 + 21 + 21) * 3  # 225
         self._emotion_num_features = None  # determined dynamically on first frame
         self.libras_clf = LibrasClassifier(window_size=window_size)
+        self.alphabet_clf = LibrasAlphabetClassifier(window_size=window_size)
         self.emotion_clf = None  # lazy-init after we know face feature count
 
         # Cached predictions
         self.last_libras_pred: dict | None = None
+        self.last_alphabet_pred: dict | None = None
         self.last_emotion_pred: dict | None = None
 
         logger.info("InferenceEngine ready  —  model=%s  window=%d", model_path, window_size)
@@ -112,12 +114,14 @@ class InferenceEngine:
 
         Returns dict ``{"libras": {...} | None, "emotion": {...} | None}``.
         """
-        result = {"libras": self.last_libras_pred, "emotion": self.last_emotion_pred}
+        result = {"libras": self.last_libras_pred, "alphabet": self.last_alphabet_pred, "emotion": self.last_emotion_pred}
 
         if len(self._libras_buffer) == self.window_size:
             seq = np.expand_dims(np.array(self._libras_buffer), axis=0)
             self.last_libras_pred = self.libras_clf.predict(seq)
+            self.last_alphabet_pred = self.alphabet_clf.predict(seq)
             result["libras"] = self.last_libras_pred
+            result["alphabet"] = self.last_alphabet_pred
 
         if self.emotion_clf and len(self._emotion_buffer) == self.window_size:
             seq = np.expand_dims(np.array(self._emotion_buffer), axis=0)

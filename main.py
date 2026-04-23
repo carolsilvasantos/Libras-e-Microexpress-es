@@ -16,6 +16,8 @@ import os
 
 from src.capture.video_stream import VideoStream
 from src.inference.engine import InferenceEngine
+from src.utils.data_collector import DataCollector
+from src.utils.feature_extractor import FeatureExtractor
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -125,9 +127,22 @@ def draw_hud(frame, predictions: dict, fps: float):
         conf = emotion["confidence"]
         cv2.putText(frame, f"EMOCAO: {label}  ({conf:.0%})", (15, 70),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 200, 0), 2)
-    else:
-        cv2.putText(frame, "EMOCAO: Aguardando...", (15, 70),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 100, 100), 1)
+    # Alphabet prediction
+    alphabet = predictions.get("alphabet")
+    if alphabet and alphabet.get("label") != "N/A":
+        label = alphabet["label"]
+        conf = alphabet["confidence"]
+        cv2.putText(frame, f"ALFABETO: {label}  ({conf:.0%})", (15, 105),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 100, 255), 2)
+
+def draw_collection_hud(frame, label: str, count: int, saved_msg: bool):
+    """Render HUD for data collection mode."""
+    cv2.putText(frame, f"COLETANDO: Letra {label} | Amostras: {count}", (15, frame.shape[0] - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    if saved_msg:
+        cv2.putText(frame, "SALVO!", (15, frame.shape[0] - 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +169,12 @@ def main():
             model_path="models/holistic_landmarker.task",
             window_size=30,
         )
+        
+        # Data Collection Setup
+        collector = DataCollector()
+        current_label = 'A'
+        samples_collected = 0
+        show_saved_msg_until = 0
 
         prev_time = time.time()
         fps = 0.0
@@ -184,13 +205,29 @@ def main():
 
             # 7. HUD overlay
             draw_hud(frame, predictions, fps)
+            
+            # Collection HUD
+            draw_collection_hud(frame, current_label, samples_collected, time.time() < show_saved_msg_until)
 
             # 8. Display
             cv2.imshow("Libras & Microexpressions AI", frame)
 
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
                 logger.info("User pressed 'q'. Exiting.")
                 break
+            elif ord('a') <= key <= ord('z'):
+                current_label = chr(key).upper()
+                logger.info(f"Target label changed to {current_label}")
+            elif key == ord(' '):  # Spacebar to save
+                features = FeatureExtractor.extract_libras_features(result)
+                if features is not None:
+                    if collector.save_sample(current_label, features):
+                        samples_collected += 1
+                        show_saved_msg_until = time.time() + 0.5
+                        logger.info(f"Saved sample {samples_collected} for letter {current_label}")
+                else:
+                    logger.warning("Could not extract features. Make sure you are in frame.")
 
     except IOError as e:
         logger.error("Hardware failure (camera): %s", e, exc_info=True)
