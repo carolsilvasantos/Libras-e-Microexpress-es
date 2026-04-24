@@ -4,59 +4,58 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 import pickle
 import os
+import sys
 
 def train_model(data_path="data/alphabet_dataset.csv", model_path="models/alphabet_classifier.pkl"):
-    """Trains a Random Forest classifier on the collected alphabet dataset."""
+    """Loads CSV and trains the Scikit-Learn model."""
+    print("\n--- INICIANDO TREINAMENTO DA IA ---")
+    
     if not os.path.exists(data_path):
-        print(f"Dataset not found at {data_path}. Please collect data first.")
+        print(f"ERRO: Arquivo '{data_path}' nao encontrado.")
+        print("DICA: Rode o 'main.py' e colete pelo menos algumas letras primeiro.")
         return
 
-    print(f"Loading dataset from {data_path}...")
-    df = pd.read_csv(data_path)
-
-    if len(df) == 0:
-        print("Dataset is empty. Please collect data first.")
+    try:
+        df = pd.read_csv(data_path)
+    except Exception as e:
+        print(f"ERRO ao ler CSV: {e}")
         return
 
-    # Split features and labels
+    if len(df) < 5:
+        print(f"DADOS INSUFICIENTES: Voce tem apenas {len(df)} amostras.")
+        print("DICA: Colete pelo menos 20-50 amostras para cada letra para ter resultado.")
+        return
+
+    print(f"Lendo {len(df)} amostras do banco de dados...")
+    
     X = df.drop("label", axis=1)
     y = df["label"]
+    
+    unique_labels = y.unique()
+    print(f"Letras detectadas no banco: {list(unique_labels)}")
 
-    print(f"Dataset loaded. Total samples: {len(df)}")
-    print(f"Classes: {y.unique()}")
+    # Split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, 
+        stratify=y if len(unique_labels) > 1 else None
+    )
 
-    # Split into training and testing sets (80% train, 20% test)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y if len(y.unique()) > 1 and min(y.value_counts()) > 1 else None)
-
-    print("Training Random Forest Classifier...")
-    # Initialize and train the model
+    print("Treinando Floresta Aleatoria (Random Forest)...")
     clf = RandomForestClassifier(n_estimators=100, random_state=42)
     clf.fit(X_train, y_train)
 
-    # Evaluate the model
-    if len(X_test) > 0:
-        print("Evaluating model...")
-        y_pred = clf.predict(X_test)
-        accuracy = accuracy_score(y_test, y_pred)
-        print(f"Accuracy: {accuracy * 100:.2f}%")
-        
-        # Only print classification report if there are multiple classes
-        if len(y.unique()) > 1:
-            print("\nClassification Report:")
-            print(classification_report(y_test, y_pred))
+    # Evaluate
+    y_pred = clf.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    print(f"--- SUCESSO! ACURACIA: {acc*100:.1f}% ---")
 
-    # Save the model and labels list
+    # Save
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    
-    model_data = {
-        "model": clf,
-        "labels": y.unique().tolist()
-    }
-    
     with open(model_path, "wb") as f:
-        pickle.dump(model_data, f)
-
-    print(f"Model saved successfully to {model_path}.")
+        pickle.dump({"model": clf, "labels": list(unique_labels)}, f)
+    
+    print(f"Modelo salvo em: {model_path}")
+    print("\nAgora voce pode rodar o 'main.py' e a IA reconhecera suas maos!\n")
 
 if __name__ == "__main__":
     train_model()
