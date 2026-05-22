@@ -1,48 +1,60 @@
-"""
-ObjectDetectionEngine using MediaPipe Tasks API.
-Replaces the legacy Holistic Landmarker for general object detection.
-"""
-
 import numpy as np
 import time
+import cv2
 import logging
-from mediapipe.tasks.python.vision import ObjectDetector, ObjectDetectorOptions
-from mediapipe.tasks.python.core.base_options import BaseOptions
-from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
-from mediapipe import Image, ImageFormat
+from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
-class ObjectDetectionEngine:
-    """Manages ObjectDetector lifecycle and inference."""
+class ObjectDetector:
+    """
+    Wrapper for YOLOv8 Object Detector.
+    Uses standard YOLOv8n (nano) model for real-time performance.
+    """
 
-    def __init__(self, model_path: str = "models/efficientdet_lite0.tflite", score_threshold: float = 0.5):
-        base_options = BaseOptions(model_asset_path=model_path)
-        options = ObjectDetectorOptions(
-            base_options=base_options,
-            running_mode=VisionTaskRunningMode.VIDEO,
-            score_threshold=score_threshold,
-            max_results=5
-        )
-        self.detector = ObjectDetector.create_from_options(options)
-        self._start_time = time.time()
-        logger.info(f"ObjectDetectionEngine ready with model: {model_path}")
-
-    def process_frame(self, rgb_frame: np.ndarray):
-        """Detects objects in an RGB frame."""
-        if rgb_frame is None:
-            return None
-
-        mp_image = Image(image_format=ImageFormat.SRGB, data=rgb_frame)
-        timestamp_ms = int((time.time() - self._start_time) * 1000)
-
+    def __init__(self, model_path: str = "yolov8n.pt", min_confidence: float = 0.50):
+        """
+        Initialize the YOLOv8 detector.
+        If model_path is just a name (e.g. 'yolov8n.pt'), it will be downloaded automatically by ultralytics.
+        """
         try:
-            result = self.detector.detect_for_video(mp_image, timestamp_ms)
-            return result
+            self.model = YOLO(model_path)
+            self.min_confidence = min_confidence
+            logger.info(f"YOLOv8 initialized with model: {model_path} (Confidence: {min_confidence * 100}%)")
         except Exception as e:
-            logger.error(f"Object detection failed: {e}")
-            return None
+            logger.error(f"Failed to load YOLO model: {e}")
+            raise
+
+    def detect(self, frame: np.ndarray):
+        """
+        Processes a frame and returns detections.
+        
+        Returns:
+            tuple: (results, latency_ms)
+        """
+        if frame is None:
+            return None, 0.0
+
+        start_inference = time.time()
+        
+        try:
+            # results is a list of Results objects
+            results = self.model.predict(
+                source=frame,
+                conf=self.min_confidence,
+                verbose=False,
+                device='cpu' # Use '0' for GPU if available
+            )
+            
+            latency_ms = (time.time() - start_inference) * 1000
+            
+            # The UI normally expects a result object with a list of detections.
+            # We'll return the first result in the list.
+            return results[0], latency_ms
+        except Exception as e:
+            logger.error(f"Inference error: {e}")
+            return None, 0.0
 
     def close(self):
-        self.detector.close()
-        logger.info("ObjectDetectionEngine closed.")
+        """No explicit close needed for Ultralytics YOLO loader, but kept for interface consistency."""
+        logger.info("YOLOv8 released.")

@@ -1,24 +1,34 @@
-# Real-Time Object Detection AI 🚀
+# Detector de Objetos AI 🚀
 
-A high-performance computer vision system for real-time object detection using MediaPipe and OpenCV.
+A high-performance computer vision system for real-time object detection using MediaPipe and OpenCV, now with premium features and a sleek HUD.
 
 ## 🚀 Overview
 
 This project implements a robust pipeline for detecting and tracking 90+ classes of everyday objects (people, vehicles, electronics, etc.) using the EfficientDet-Lite0 model.
 
 ### Key Features:
+- **Premium HUD**: High-tech translucent interface with real-time FPS and object counter.
+- **Sleek Graphics**: Stylized bounding boxes with dynamic labels and cyberpunk aesthetics.
+- **Snapshot Support**: Press `S` to save instant high-quality captures in `captures/`.
+- **Video Recording**: Press `R` to toggle session recording into `recordings/`.
 - **Ultra-Fast Inference**: Optimized for real-time performance on average CPUs.
-- **Concurrent Capture**: Threaded video stream logic to prevent UI lag.
-- **Dynamic HUD**: Real-time FPS monitoring and object counter.
 - **Modular Architecture**: Clean, production-ready Python codebase following SOLID principles.
 
 ## 📁 Structure
 
 - `src/capture`: Threaded video stream logic.
 - `src/inference`: Object detection engine and MediaPipe integration.
-- `src/utils`: Visualization tools for bounding boxes and labels.
-- `main.py`: Entry point and integration loop.
+- `src/utils`: Advanced visualization tools.
+- `main.py`: Entry point and UI loop.
+- `captures/`: Saved snapshots.
+- `recordings/`: Video recordings.
 - `models/`: Pre-trained TFLite models.
+
+## 💻 Keyboard Controls
+
+- `Q`: Quit application
+- `S`: Take a snapshot (Saved to `captures/`)
+- `R`: Toggle recording (Saved to `recordings/`)
 
 ## 🛠️ Requirements
 
@@ -38,12 +48,3 @@ This project implements a robust pipeline for detecting and tracking 90+ classes
    ```bash
    python main.py
    ```
-
-## 📜 Principles
-
-- **Performance**: Asynchronous video capture ensures smooth 30+ FPS.
-- **Extensibility**: Easily swappable models for different detection tasks.
-- **Clean Code**: High readability and maintainability.
-
----
-*Original project focused on Libras, now evolved into a general Computer Vision toolkit.*

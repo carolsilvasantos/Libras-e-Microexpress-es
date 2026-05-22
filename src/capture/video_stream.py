@@ -1,6 +1,7 @@
 import cv2
 import threading
 import logging
+import time
 
 class VideoStream:
     """Threaded camera capture to ensure the main loop doesn't block."""
@@ -12,21 +13,37 @@ class VideoStream:
             
         (self.grabbed, self.frame) = self.stream.read()
         self.stopped = False
+        self.lock = threading.Lock()
 
     def start(self):
-        threading.Thread(target=self.update, args=(), daemon=True).start()
+        """Starts the capture thread."""
+        t = threading.Thread(target=self.update, args=(), daemon=True)
+        t.start()
         return self
 
     def update(self):
+        """Internal loop to grab frames."""
         while not self.stopped:
-            if not self.grabbed:
+            grabbed, frame = self.stream.read()
+            
+            with self.lock:
+                self.grabbed = grabbed
+                self.frame = frame
+            
+            if not grabbed:
+                logging.warning("Stream ended or camera disconnected.")
                 self.stop()
-            else:
-                (self.grabbed, self.frame) = self.stream.read()
+                break
+                
+            # Slight sleep to reduce CPU usage if camera has low FPS
+            time.sleep(0.001)
 
     def read(self):
-        return self.frame
+        """Returns the most recent frame."""
+        with self.lock:
+            return self.frame.copy() if self.frame is not None else None
 
     def stop(self):
+        """Stops the thread and releases resources."""
         self.stopped = True
         self.stream.release()
